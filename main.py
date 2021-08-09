@@ -6,6 +6,20 @@ from enum import Enum, auto
 import csv
 
 
+class Opcode(Enum):
+    LUI = 0b0110111
+    AUIPC = 0b0010111
+    JAL = 0b1101111
+    JALR = 0b1100111
+    BRANCH = 0b1100011
+    LOAD = 0b0000011
+    STORE = 0b0100011
+    OP = 0b0110011
+    OP_IMM = 0b0010011
+    MISC_MEM = 0b0001111
+    SYSTEM = 0b1110011
+
+
 class Op(Enum):
     LUI = auto()
     AUIPC = auto()
@@ -165,27 +179,27 @@ def execute(data, size, start_addr):
     offset = 0
     while offset + 4 <= size:
         ins = struct.unpack('I', data[offset : offset + 4])[0]
-        opcode = get_bits(ins, 6, 0)
+        opcode = Opcode(get_bits(ins, 6, 0))
 
-        if opcode == 0b0110111:
+        if opcode == Opcode.LUI:
             # LUI instruction
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode=:07b} LUI {imm=:08x} {rd=}')
+            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
 
             registers[rd] = imm
 
-        elif opcode == 0b0010111:
+        elif opcode == Opcode.AUIPC:
             # AUIPC instruction
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode=:07b} AUIPC {imm=:08x} {rd=}')
+            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
 
             registers[rd] = pc + imm
 
-        elif opcode == 0b1101111:
+        elif opcode == Opcode.JAL:
             # JAL instruction
             # J type
             imm = (
@@ -195,7 +209,7 @@ def execute(data, size, start_addr):
                 + (get_bits(ins, 19, 12) << 12)
             )
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode=:07b} JAL {imm=:08x} {rd=}')
+            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
 
             # Sign extending the immediate
             if imm & (1 << 19):
@@ -209,7 +223,7 @@ def execute(data, size, start_addr):
             registers[rd] = pc + 4
             pc = branch_to
 
-        elif opcode == 0b1100111:
+        elif opcode == Opcode.JALR:
             # JALR instruction
             # I type
             imm = get_bits(ins, 31, 20)
@@ -217,7 +231,7 @@ def execute(data, size, start_addr):
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
             print(
-                f'{pc:08x} {ins:08x} {opcode=:07b} JALR {imm=:08x} {rs1=} {funct3=} {rd=}'
+                f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rs1=} {funct3=} {rd=}'
             )
 
             # TODO: Let's hope it works, need to test
@@ -233,7 +247,7 @@ def execute(data, size, start_addr):
             registers[rd] = pc + 4
             pc = branch_to
 
-        elif opcode == 0b1100011:
+        elif opcode == Opcode.BRANCH:
             # BEQ, BNE, BLT, BGE, BLTU, BGEU instructions
             # B type
             imm = (
@@ -259,10 +273,8 @@ def execute(data, size, start_addr):
 
             def print_branch(ins_name):
                 print(
-                    f'{pc:08x} {ins:08x} {opcode=:07b} {ins_name} {imm=:08x} {rs1=} {funct3=} {rd=}'
+                    f'{pc:08x} {ins:08x} {opcode} {ins_name} {imm=:08x} {rs1=} {rs2=} {funct3=} {rd=}'
                 )
-
-            print(f'{registers[rs1]=} {registers[rs2]=}')
 
             if funct3 == 0b000:
                 # BEQ instruction
@@ -315,8 +327,42 @@ def execute(data, size, start_addr):
                     f'Wrong {funct3=:03b} for branch instructions!'
                 )
 
+        elif opcode == Opcode.LOAD:
+            # LB, LH, LW, LBU, LHU instructions
+            # I type
+            imm = get_bits(ins, 31, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+            print(
+                f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rs1=} {funct3=} {rd=}'
+            )
+
+            pass
+        elif opcode == Opcode.STORE:
+            # SB, SH, SW instructions
+            # S type
+            print(f'{pc:08x} {ins:08x} {opcode}')
+            pass
+        elif opcode == Opcode.OP:
+            # Arithmetic instrutions (10 pcs)
+            print(f'{pc:08x} {ins:08x} {opcode}')
+            pass
+        elif opcode == Opcode.OP_IMM:
+            # Arithmetic instrutions (9 pcs)
+            print(f'{pc:08x} {ins:08x} {opcode}')
+            pass
+        elif opcode == Opcode.MISC_MEM:
+            # FENCE instruction
+            print(f'{pc:08x} {ins:08x} {opcode}')
+            pass
+        elif opcode == Opcode.SYSTEM:
+            # ECALL, EBREAK instructions
+            print(f'{pc:08x} {ins:08x} {opcode}')
+            pass
+
         else:
-            print(f'{pc:08x} {ins:08x} {opcode=:07b} UNKNOWN')
+            print(f'{pc:08x} {ins:08x} {opcode=} UNKNOWN')
 
         # dump_regs()
 
@@ -328,11 +374,11 @@ def execute(data, size, start_addr):
 if __name__ == '__main__':
     paths = [
         x
-        for x in glob.glob('./riscv-tests/isa/rv32ui-p-jalr')
+        for x in glob.glob('./riscv-tests/isa/rv32ui-p-*')
         if len(x.split('.')) == 2
     ]
     for path in paths:
         print(f'Executing file: {path}')
         with open(path, 'rb') as file:
             execute_elf(file)
-            # break
+            break
