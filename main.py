@@ -140,16 +140,21 @@ def step():
 #     print(operand)
 
 
-def execute_elf(file):
-    # setup()
-
+def parse_elf(file):
     elf = ELFFile(file)
     text_init = elf.get_section_by_name('.text.init')
     start_addr = np.uint32(text_init.header['sh_addr'])
     data = text_init.data()
-
     size = text_init.header['sh_size']
+    return data, size, start_addr
 
+
+def execute_elf(file):
+    data, size, start_addr = parse_elf(file)
+    return execute(data, size, start_addr)
+
+
+def execute(data, size, start_addr):
     registers = np.zeros(32, dtype=np.uint32)
     pc = start_addr
 
@@ -193,15 +198,122 @@ def execute_elf(file):
             print(f'{pc:08x} {ins:08x} {opcode=:07b} JAL {imm=:08x} {rd=}')
 
             # Sign extending the immediate
-            if imm & (1 << 20):
+            if imm & (1 << 19):
                 # negative number
                 imm = ((imm ^ ((1 << 20) - 1)) + 1) & ((1 << 20) - 1)
-                pc = pc - imm - 4
+                branch_to = pc - imm - 4
             else:
                 # positive number
-                pc = pc + imm - 4
+                branch_to = pc + imm - 4
 
             registers[rd] = pc + 4
+            pc = branch_to
+
+        elif opcode == 0b1100111:
+            # JALR instruction
+            # I type
+            imm = get_bits(ins, 31, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+            print(
+                f'{pc:08x} {ins:08x} {opcode=:07b} JALR {imm=:08x} {rs1=} {funct3=} {rd=}'
+            )
+
+            # TODO: Let's hope it works, need to test
+            # Sign extending the immediate
+            if imm & (1 << 11):
+                # negative number
+                imm = ((imm ^ ((1 << 12) - 1)) + 1) & ((1 << 12) - 1)
+                branch_to = (registers[rs1] - imm - 4) & ((1 << 32) - 2)
+            else:
+                # positive number
+                branch_to = (registers[rs1] + imm - 4) & ((1 << 32) - 2)
+
+            registers[rd] = pc + 4
+            pc = branch_to
+
+        elif opcode == 0b1100011:
+            # BEQ, BNE, BLT, BGE, BLTU, BGEU instructions
+            # B type
+            imm = (
+                (get_bits(ins, 31, 31) << 20)
+                + (get_bits(ins, 30, 25) << 5)
+                + (get_bits(ins, 11, 8) << 1)
+                + (get_bits(ins, 7, 7) << 11)
+            )
+            rs2 = get_bits(ins, 24, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+
+            # TODO: Let's hope it works, need to test
+            # Sign extending the immediate
+            if imm & (1 << 11):
+                # negative number
+                imm = ((imm ^ ((1 << 12) - 1)) + 1) & ((1 << 12) - 1)
+                branch_to = pc - imm - 4
+            else:
+                # positive number
+                branch_to = pc + imm - 4
+
+            def print_branch(ins_name):
+                print(
+                    f'{pc:08x} {ins:08x} {opcode=:07b} {ins_name} {imm=:08x} {rs1=} {funct3=} {rd=}'
+                )
+
+            print(f'{registers[rs1]=} {registers[rs2]=}')
+
+            if funct3 == 0b000:
+                # BEQ instruction
+                print_branch('BEQ')
+                if registers[rs1] == registers[rs2]:
+                    pc = branch_to
+            elif funct3 == 0b001:
+                # BNE instruction
+                print_branch('BNE')
+                if registers[rs1] != registers[rs2]:
+                    pc = branch_to
+            elif funct3 == 0b100:
+                # BLT instruction
+                print_branch('BLT')
+                # Check if values are negative
+                value1 = registers[rs1]
+                if value1 & (1 << 31):
+                    value1 = ((value1 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
+                value2 = registers[rs2]
+                if value2 & (1 << 31):
+                    value2 = ((value2 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
+                if value1 < value2:
+                    pc = branch_to
+            elif funct3 == 0b101:
+                # BGE instruction
+                print_branch('BGE')
+                # Check if values are negative
+                value1 = registers[rs1]
+                if value1 & (1 << 31):
+                    value1 = ((value1 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
+                value2 = registers[rs2]
+                if value2 & (1 << 31):
+                    value2 = ((value2 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
+                if value1 > value2:
+                    pc = branch_to
+            elif funct3 == 0b110:
+                # BLTU instruction
+                print_branch('BLTU')
+                if registers[rs1] < registers[rs2]:
+                    pc = branch_to
+            elif funct3 == 0b111:
+                # BGEU instruction
+                print_branch('BGEU')
+                if registers[rs1] > registers[rs2]:
+                    pc = branch_to
+            else:
+                # No instruction with such funct3
+                print_branch('UNKNOWN')
+                raise Exception(
+                    f'Wrong {funct3=:03b} for branch instructions!'
+                )
 
         else:
             print(f'{pc:08x} {ins:08x} {opcode=:07b} UNKNOWN')
@@ -216,7 +328,7 @@ def execute_elf(file):
 if __name__ == '__main__':
     paths = [
         x
-        for x in glob.glob('./riscv-tests/isa/rv32ui-p-jal')
+        for x in glob.glob('./riscv-tests/isa/rv32ui-p-jalr')
         if len(x.split('.')) == 2
     ]
     for path in paths:
