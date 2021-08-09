@@ -181,26 +181,25 @@ def execute(data, size, start_addr):
         ins = struct.unpack('I', data[offset : offset + 4])[0]
         opcode = Opcode(get_bits(ins, 6, 0))
 
+        print(f'{pc:08x} {ins:08x} {opcode.name} ', end='')
+
         if opcode == Opcode.LUI:
-            # LUI instruction
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
+            print(f'{imm=:08x} {rd=}')
 
             registers[rd] = imm
 
         elif opcode == Opcode.AUIPC:
-            # AUIPC instruction
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
+            print(f'{imm=:08x} {rd=}')
 
             registers[rd] = pc + imm
 
         elif opcode == Opcode.JAL:
-            # JAL instruction
             # J type
             imm = (
                 (get_bits(ins, 31, 31) << 20)
@@ -209,7 +208,7 @@ def execute(data, size, start_addr):
                 + (get_bits(ins, 19, 12) << 12)
             )
             rd = get_bits(ins, 11, 7)
-            print(f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rd=}')
+            print(f'{imm=:08x} {rd=}')
 
             # Sign extending the immediate
             if imm & (1 << 19):
@@ -224,15 +223,12 @@ def execute(data, size, start_addr):
             pc = branch_to
 
         elif opcode == Opcode.JALR:
-            # JALR instruction
             # I type
             imm = get_bits(ins, 31, 20)
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
-            print(
-                f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rs1=} {funct3=} {rd=}'
-            )
+            print(f'{imm=:08x} {rs1=} {funct3=} {rd=}')
 
             # TODO: Let's hope it works, need to test
             # Sign extending the immediate
@@ -272,9 +268,7 @@ def execute(data, size, start_addr):
                 branch_to = pc + imm - 4
 
             def print_branch(ins_name):
-                print(
-                    f'{pc:08x} {ins:08x} {opcode} {ins_name} {imm=:08x} {rs1=} {rs2=} {funct3=} {rd=}'
-                )
+                print(f'{ins_name} {imm=:08x} {rs1=} {rs2=} {funct3=} {rd=}')
 
             if funct3 == 0b000:
                 # BEQ instruction
@@ -334,35 +328,27 @@ def execute(data, size, start_addr):
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
-            print(
-                f'{pc:08x} {ins:08x} {opcode} {imm=:08x} {rs1=} {funct3=} {rd=}'
-            )
+            print(f'{imm=:08x} {rs1=} {funct3=} {rd=}')
 
-            pass
         elif opcode == Opcode.STORE:
             # SB, SH, SW instructions
             # S type
-            print(f'{pc:08x} {ins:08x} {opcode}')
-            pass
+            print(f'')
         elif opcode == Opcode.OP:
             # Arithmetic instrutions (10 pcs)
-            print(f'{pc:08x} {ins:08x} {opcode}')
-            pass
+            print(f'')
         elif opcode == Opcode.OP_IMM:
-            # Arithmetic instrutions (9 pcs)
-            print(f'{pc:08x} {ins:08x} {opcode}')
-            pass
+            # Arithmetic instrutions with immediate (9 pcs)
+            print(f'')
         elif opcode == Opcode.MISC_MEM:
             # FENCE instruction
-            print(f'{pc:08x} {ins:08x} {opcode}')
-            pass
+            print(f'')
         elif opcode == Opcode.SYSTEM:
             # ECALL, EBREAK instructions
-            print(f'{pc:08x} {ins:08x} {opcode}')
-            pass
+            print(f'')
 
         else:
-            print(f'{pc:08x} {ins:08x} {opcode=} UNKNOWN')
+            print(f'UNKNOWN')
 
         # dump_regs()
 
