@@ -2,8 +2,7 @@ import glob
 import struct
 import numpy as np
 from elftools.elf.elffile import ELFFile
-from enum import Enum, auto
-import csv
+from enum import Enum
 
 
 class Opcode(Enum):
@@ -20,55 +19,63 @@ class Opcode(Enum):
     SYSTEM = 0b1110011
 
 
+class BranchOp(Enum):
+    BEQ = 0b000
+    BNE = 0b001
+    BLT = 0b100
+    BGE = 0b101
+    BLTU = 0b110
+    BGEU = 0b111
+
+
+class LoadOp(Enum):
+    LB = 0b000
+    LH = 0b001
+    LW = 0b010
+    LBU = 0b100
+    LHU = 0b101
+
+
+class StoreOp(Enum):
+    SB = 0b000
+    SH = 0b001
+    SW = 0b010
+
+
+class OpImm(Enum):
+    ADDI = 0b000
+    SLTI = 0b010
+    SLTIU = 0b011
+    XORI = 0b100
+    ORI = 0b110
+    ANDI = 0b111
+    SLLI = 0b001
+    SRLI_SRAI = 0b101
+
+
 class Op(Enum):
-    LUI = auto()
-    AUIPC = auto()
-    JAL = auto()
-    JALR = auto()
-    BEQ = auto()
-    BNE = auto()
-    BLT = auto()
-    BGE = auto()
-    BLTU = auto()
-    BGEU = auto()
-    LB = auto()
-    LH = auto()
-    LW = auto()
-    LBU = auto()
-    LHU = auto()
-    SB = auto()
-    SH = auto()
-    SW = auto()
-    ADDI = auto()
-    SLTI = auto()
-    SLTIU = auto()
-    XORI = auto()
-    ORI = auto()
-    ANDI = auto()
-    SRLI = auto()
-    SRAI = auto()
-    ADD = auto()
-    SUB = auto()
-    SLL = auto()
-    SLT = auto()
-    SLTU = auto()
-    XOR = auto()
-    SRL = auto()
-    SRA = auto()
-    OR = auto()
-    AND = auto()
-    FENCE = auto()
-    ECALL = auto()
-    EBREAK = auto()
+    ADD_SUB = 0b000
+    SLL = 0b001
+    SLT = 0b010
+    SLTU = 0b011
+    XOR = 0b100
+    SRL_SRA = 0b101
+    OR = 0b110
+    AND = 0b111
 
 
-class InsType(Enum):
-    R = auto()
-    I = auto()
-    S = auto()
-    B = auto()
-    U = auto()
-    J = auto()
+class SystemOp(Enum):
+    ECALL = 0b000000000000
+    EBREAK = 0b000000000001
+
+
+# class InsType(Enum):
+#     R = auto()
+#     I = auto()
+#     S = auto()
+#     B = auto()
+#     U = auto()
+#     J = auto()
 
 
 # type_mapping = {
@@ -115,21 +122,6 @@ class InsType(Enum):
 # }
 
 
-class Ins:
-    def __init__(self, op: Op):
-
-        pass
-
-
-# class Op:
-#     def __init__(self, name, format_str):
-#         self.name = name
-#         self.format_str = format_str
-
-#     def __repr__(self):
-#         return f'{self.name:8} {self.format_str}'
-
-
 def get_mask(start, end):
     return ((1 << (start + 1)) - 1) - ((1 << end) - 1)
 
@@ -138,20 +130,15 @@ def get_bits(value, start, end):
     return (value & get_mask(start, end)) >> end
 
 
+def sign_extend(value, cur_size, new_size):
+    if value & get_mask(cur_size - 1, cur_size - 1):
+        # If negative, sign extend
+        value = get_mask(new_size - 1, cur_size) | value
+    return value
+
+
 def step():
     pass
-
-
-# def setup():
-# with open('./isa.csv', 'r') as file:
-#     csv_file = [x for x in csv.reader(file, delimiter=' ')]
-# Op = Enum('Op', ' '.join([x[-1] for x in csv_file]))
-# print(Op.BEQ)
-
-# for row in csv.reader(file, delimiter=' '):
-#     operand = Op(row[-1], ' '.join(row[0:-2]))
-#     ops.append(operand)
-#     print(operand)
 
 
 def parse_elf(file):
@@ -170,6 +157,8 @@ def execute_elf(file):
 
 def execute(data, size, start_addr):
     registers = np.zeros(32, dtype=np.uint32)
+    # Allocate 4 KB heap
+    memory = np.zeros(4 * 1024, dtype=np.uint8)
     pc = start_addr
 
     def dump_regs():
@@ -181,7 +170,7 @@ def execute(data, size, start_addr):
         ins = struct.unpack('I', data[offset : offset + 4])[0]
         opcode = Opcode(get_bits(ins, 6, 0))
 
-        print(f'{pc:08x} {ins:08x} {opcode.name} ', end='')
+        print(f'{pc:08x} {ins:08x} {opcode.name.rjust(6)} ', end='')
 
         if opcode == Opcode.LUI:
             # U type
@@ -197,7 +186,8 @@ def execute(data, size, start_addr):
             rd = get_bits(ins, 11, 7)
             print(f'{imm=:08x} {rd=}')
 
-            registers[rd] = pc + imm
+            pc = pc + imm - 4
+            registers[rd] = pc + 4
 
         elif opcode == Opcode.JAL:
             # J type
@@ -211,16 +201,9 @@ def execute(data, size, start_addr):
             print(f'{imm=:08x} {rd=}')
 
             # Sign extending the immediate
-            if imm & (1 << 19):
-                # negative number
-                imm = ((imm ^ ((1 << 20) - 1)) + 1) & ((1 << 20) - 1)
-                branch_to = pc - imm - 4
-            else:
-                # positive number
-                branch_to = pc + imm - 4
-
+            imm = sign_extend(imm, 32, 32)
             registers[rd] = pc + 4
-            pc = branch_to
+            pc = pc + imm - 4
 
         elif opcode == Opcode.JALR:
             # I type
@@ -232,17 +215,13 @@ def execute(data, size, start_addr):
 
             # TODO: Let's hope it works, need to test
             # Sign extending the immediate
-            if imm & (1 << 11):
-                # negative number
-                imm = ((imm ^ ((1 << 12) - 1)) + 1) & ((1 << 12) - 1)
-                branch_to = (registers[rs1] - imm - 4) & ((1 << 32) - 2)
-            else:
-                # positive number
-                branch_to = (registers[rs1] + imm - 4) & ((1 << 32) - 2)
+            imm = sign_extend(imm, 12, 32)
 
+            branch_to = ((registers[rs1] + imm) & get_mask(31, 1)) - 4
             registers[rd] = pc + 4
             pc = branch_to
 
+        # Partially UNIMPLEMENTED
         elif opcode == Opcode.BRANCH:
             # BEQ, BNE, BLT, BGE, BLTU, BGEU instructions
             # B type
@@ -259,68 +238,36 @@ def execute(data, size, start_addr):
 
             # TODO: Let's hope it works, need to test
             # Sign extending the immediate
-            if imm & (1 << 11):
-                # negative number
-                imm = ((imm ^ ((1 << 12) - 1)) + 1) & ((1 << 12) - 1)
-                branch_to = pc - imm - 4
-            else:
-                # positive number
-                branch_to = pc + imm - 4
+            imm = sign_extend(imm, 12, 32)
 
-            def print_branch(ins_name):
-                print(f'{ins_name} {imm=:08x} {rs1=} {rs2=} {funct3=} {rd=}')
+            branch_to = pc + imm - 4
 
-            if funct3 == 0b000:
-                # BEQ instruction
-                print_branch('BEQ')
+            branch_op = BranchOp(funct3)
+            print(f'{branch_op.name.rjust(4)} {imm=:08x} {rs1=} {rs2=} {rd=}')
+
+            if branch_op == BranchOp.BEQ:
                 if registers[rs1] == registers[rs2]:
                     pc = branch_to
-            elif funct3 == 0b001:
-                # BNE instruction
-                print_branch('BNE')
+            elif branch_op == BranchOp.BNE:
                 if registers[rs1] != registers[rs2]:
                     pc = branch_to
-            elif funct3 == 0b100:
-                # BLT instruction
-                print_branch('BLT')
-                # Check if values are negative
-                value1 = registers[rs1]
-                if value1 & (1 << 31):
-                    value1 = ((value1 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
-                value2 = registers[rs2]
-                if value2 & (1 << 31):
-                    value2 = ((value2 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
-                if value1 < value2:
-                    pc = branch_to
-            elif funct3 == 0b101:
-                # BGE instruction
-                print_branch('BGE')
-                # Check if values are negative
-                value1 = registers[rs1]
-                if value1 & (1 << 31):
-                    value1 = ((value1 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
-                value2 = registers[rs2]
-                if value2 & (1 << 31):
-                    value2 = ((value2 ^ ((1 << 32) - 1)) + 1) & ((1 << 32) - 1)
-                if value1 > value2:
-                    pc = branch_to
-            elif funct3 == 0b110:
-                # BLTU instruction
-                print_branch('BLTU')
+            elif branch_op == BranchOp.BLT:
+                raise Exception("Unimplemented!")
+            elif branch_op == BranchOp.BGE:
+                raise Exception("Unimplemented!")
+            elif branch_op == BranchOp.BLTU:
                 if registers[rs1] < registers[rs2]:
                     pc = branch_to
-            elif funct3 == 0b111:
-                # BGEU instruction
-                print_branch('BGEU')
+            elif branch_op == BranchOp.BGEU:
                 if registers[rs1] > registers[rs2]:
                     pc = branch_to
             else:
-                # No instruction with such funct3
-                print_branch('UNKNOWN')
+                # No instruction with such branch_op
                 raise Exception(
-                    f'Wrong {funct3=:03b} for branch instructions!'
+                    f'Wrong {branch_op=:03b} for branch instructions!'
                 )
 
+        # UNIMPLEMENTED
         elif opcode == Opcode.LOAD:
             # LB, LH, LW, LBU, LHU instructions
             # I type
@@ -328,24 +275,134 @@ def execute(data, size, start_addr):
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
-            print(f'{imm=:08x} {rs1=} {funct3=} {rd=}')
+            load_op = LoadOp(funct3)
 
+            print(f'{load_op} {imm=:08x} {rs1=} {rd=}')
+
+        # UNIMPLEMENTED
         elif opcode == Opcode.STORE:
             # SB, SH, SW instructions
             # S type
             print(f'')
-        elif opcode == Opcode.OP:
-            # Arithmetic instrutions (10 pcs)
-            print(f'')
+
+        # Partially UNIMPLEMENTED
         elif opcode == Opcode.OP_IMM:
             # Arithmetic instrutions with immediate (9 pcs)
-            print(f'')
+            imm = get_bits(ins, 31, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+
+            op_imm = OpImm(funct3)
+
+            print(f'{op_imm.name.rjust(9)} {imm=:08x} {rs1=} {rd=}')
+            if op_imm == OpImm.ADDI:
+                imm = sign_extend(imm, 12, 32)
+                registers[rd] = registers[rs1] + imm
+            elif op_imm == OpImm.SLTI:
+                imm = sign_extend(imm, 12, 32)
+                registers[rd] = int(registers[rs1] < imm)
+            elif op_imm == OpImm.SLTIU:
+                imm = sign_extend(imm, 12, 32)
+                raise Exception("Unimplemented!")
+            elif op_imm == OpImm.XORI:
+                imm = sign_extend(imm, 12, 32)
+                registers[rd] = registers[rs1] ^ imm
+            elif op_imm == OpImm.ORI:
+                imm = sign_extend(imm, 12, 32)
+                registers[rd] = registers[rs1] | imm
+            elif op_imm == OpImm.ANDI:
+                imm = sign_extend(imm, 12, 32)
+                registers[rd] = registers[rs1] & imm
+            elif op_imm == OpImm.SLLI:
+                shamt = get_bits(imm, 4, 0)
+                registers[rd] = registers[rs1] << shamt
+            elif op_imm == OpImm.SRLI_SRAI:
+                shamt = get_bits(imm, 4, 0)
+                funct7 = get_bits(imm, 11, 5)
+                if funct7 == 0b0000000:
+                    # SRLI instruction
+                    registers[rd] = registers[rs1] >> shamt
+                elif funct7 == 0b0100000:
+                    # SRAI instruction
+                    registers[rd] = sign_extend(
+                        registers[rs1] >> shamt, 32 - shamt, 32
+                    )
+                else:
+                    raise Exception("Unknown funct7 for SRLI_SRAI!")
+
+        # Partially UNIMPLEMENTED
+        elif opcode == Opcode.OP:
+            # Arithmetic instrutions (10 pcs)
+            # Arithmetic instrutions with immediate (9 pcs)
+            funct7 = get_bits(ins, 31, 25)
+            rs2 = get_bits(ins, 24, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+
+            op = Op(funct3)
+
+            print(f'{op.name.rjust(7)} {funct7=} {rs1=} {rs2=} {rd=}')
+
+            if op == Op.ADD_SUB:
+                if funct7 == 0b0000000:
+                    # ADD instruction
+                    registers[rd] = registers[rs1] + registers[rs2]
+                elif funct7 == 0b0100000:
+                    # SUB instruction
+                    registers[rd] = registers[rs1] - registers[rs2]
+            elif op == Op.SLL:
+                shamt = get_bits(registers[rs2], 4, 0)
+                registers[rd] = registers[rs1] << shamt
+            elif op == Op.SLT:
+                registers[rd] = int(registers[rs1] < registers[rs2])
+            elif op == Op.SLTU:
+                raise Exception("Unimplemented!")
+            elif op == Op.XOR:
+                registers[rd] = registers[rs1] ^ registers[rs2]
+            elif op == Op.SRL_SRA:
+                shamt = get_bits(registers[rs2], 4, 0)
+                if funct7 == 0b0000000:
+                    # SRL instruction
+                    registers[rd] = registers[rs1] >> shamt
+                elif funct7 == 0b0100000:
+                    # SRA instruction
+                    registers[rd] = sign_extend(
+                        registers[rs1] >> shamt, 32 - shamt, 32
+                    )
+            elif op == Op.OR:
+                registers[rd] = registers[rs1] | registers[rs2]
+            elif op == Op.AND:
+                registers[rd] = registers[rs1] & registers[rs2]
+
+        # UNIMPLEMENTED
         elif opcode == Opcode.MISC_MEM:
             # FENCE instruction
             print(f'')
+
+        # Partially UNIMPLEMENTED
         elif opcode == Opcode.SYSTEM:
             # ECALL, EBREAK instructions
-            print(f'')
+            # I type
+            funct12 = get_bits(ins, 31, 20)
+            rs1 = get_bits(ins, 19, 15)
+            funct3 = get_bits(ins, 14, 12)
+            rd = get_bits(ins, 11, 7)
+
+            try:
+                system_op = SystemOp(funct12)
+                print(
+                    f'{system_op.name.rjust(6)} {funct12=} {rs1=} {funct3=} {rd=}'
+                )
+
+                if system_op == SystemOp.ECALL:
+                    print('Syscall requested, are we good?')
+                elif system_op == SystemOp.EBREAK:
+                    raise Exception("Unimplemented!")
+            except ValueError:
+                # One of the CSR instructions, ignore for now
+                print(f'')
 
         else:
             print(f'UNKNOWN')
@@ -360,7 +417,7 @@ def execute(data, size, start_addr):
 if __name__ == '__main__':
     paths = [
         x
-        for x in glob.glob('./riscv-tests/isa/rv32ui-p-*')
+        for x in glob.glob('./riscv-tests/isa/rv32ui-p-addi')
         if len(x.split('.')) == 2
     ]
     for path in paths:
