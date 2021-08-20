@@ -1,2 +1,95 @@
-# risc-v-python
-RISC-V implementation in Python
+# RISC-V implementation in Python
+
+Very basic implementation of unpriviliged access 32-bit CPU. You might want to look at [main.py](./main.py) for implementation details.
+
+## How to run tests
+
+Tests are taken from [riscv-tests](https://github.com/riscv/riscv-tests/tree/30e15bf5e7bab7af7153aa9234613b12135304f2). Unfortunately, these tests only work on Linux. To get tests, you need to update submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+After that, compile the tests:
+
+```bash
+cd riscv-tests
+git submodule update --init --recursive
+autoconf
+./configure --prefix=$RISCV/target
+make
+make install
+```
+
+Now you can just run `python main.py` and it should start executing the tests for you.
+
+## Test example
+
+When executing tests, you can see which instructions are executed in console, for example:
+
+```
+80000000 0480006f JAL              imm=00000048 rd=0
+80000048 00000093 OP_IMM ADDI      imm=00000000 rs1=0 rd=1
+8000004c 00000113 OP_IMM ADDI      imm=00000000 rs1=0 rd=2
+80000050 00000193 OP_IMM ADDI      imm=00000000 rs1=0 rd=3
+80000054 00000213 OP_IMM ADDI      imm=00000000 rs1=0 rd=4
+80000058 00000293 OP_IMM ADDI      imm=00000000 rs1=0 rd=5
+8000005c 00000313 OP_IMM ADDI      imm=00000000 rs1=0 rd=6
+80000060 00000393 OP_IMM ADDI      imm=00000000 rs1=0 rd=7
+80000064 00000413 OP_IMM ADDI      imm=00000000 rs1=0 rd=8
+80000068 00000493 OP_IMM ADDI      imm=00000000 rs1=0 rd=9
+8000006c 00000513 OP_IMM ADDI      imm=00000000 rs1=0 rd=10
+80000070 00000593 OP_IMM ADDI      imm=00000000 rs1=0 rd=11
+80000074 00000613 OP_IMM ADDI      imm=00000000 rs1=0 rd=12
+80000078 00000693 OP_IMM ADDI      imm=00000000 rs1=0 rd=13
+8000007c 00000713 OP_IMM ADDI      imm=00000000 rs1=0 rd=14
+80000080 00000793 OP_IMM ADDI      imm=00000000 rs1=0 rd=15
+80000084 00000813 OP_IMM ADDI      imm=00000000 rs1=0 rd=16
+80000088 00000893 OP_IMM ADDI      imm=00000000 rs1=0 rd=17
+8000008c 00000913 OP_IMM ADDI      imm=00000000 rs1=0 rd=18
+80000090 00000993 OP_IMM ADDI      imm=00000000 rs1=0 rd=19
+80000094 00000a13 OP_IMM ADDI      imm=00000000 rs1=0 rd=20
+80000098 00000a93 OP_IMM ADDI      imm=00000000 rs1=0 rd=21
+8000009c 00000b13 OP_IMM ADDI      imm=00000000 rs1=0 rd=22
+800000a0 00000b93 OP_IMM ADDI      imm=00000000 rs1=0 rd=23
+800000a4 00000c13 OP_IMM ADDI      imm=00000000 rs1=0 rd=24
+800000a8 00000c93 OP_IMM ADDI      imm=00000000 rs1=0 rd=25
+800000ac 00000d13 OP_IMM ADDI      imm=00000000 rs1=0 rd=26
+800000b0 00000d93 OP_IMM ADDI      imm=00000000 rs1=0 rd=27
+800000b4 00000e13 OP_IMM ADDI      imm=00000000 rs1=0 rd=28
+800000b8 00000e93 OP_IMM ADDI      imm=00000000 rs1=0 rd=29
+800000bc 00000f13 OP_IMM ADDI      imm=00000000 rs1=0 rd=30
+800000c0 00000f93 OP_IMM ADDI      imm=00000000 rs1=0 rd=31
+800000c4 f1402573 SYSTEM CSR       UNIMPLEMENTED
+800000c8 00051063 BRANCH BNE       imm=00000000 rs1=10 rs2=0 rd=0
+800000cc 00000297 AUIPC            imm=00000000 rd=5
+800000d0 01028293 OP_IMM ADDI      imm=00000010 rs1=5 rd=5
+800000d4 30529073 SYSTEM CSR       UNIMPLEMENTED
+800000d8 18005073 SYSTEM CSR       UNIMPLEMENTED
+800000dc 00000297 AUIPC            imm=00000000 rd=5
+800000e0 02028293 OP_IMM ADDI      imm=00000020 rs1=5 rd=5
+800000e4 30529073 SYSTEM CSR       UNIMPLEMENTED
+800000e8 800002b7 LUI              imm=80000000 rd=5
+800000ec fff28293 OP_IMM ADDI      imm=00000fff rs1=5 rd=5
+800000f0 3b029073 SYSTEM CSR       UNIMPLEMENTED
+800000f4 01f00293 OP_IMM ADDI      imm=0000001f rs1=0 rd=5
+800000f8 3a029073 SYSTEM CSR       UNIMPLEMENTED
+800000fc 30405073 SYSTEM CSR       UNIMPLEMENTED
+80000100 00000297 AUIPC            imm=00000000 rd=5
+80000104 01428293 OP_IMM ADDI      imm=00000014 rs1=5 rd=5
+80000108 30529073 SYSTEM CSR       UNIMPLEMENTED
+8000010c 30205073 SYSTEM CSR       UNIMPLEMENTED
+80000110 30305073 SYSTEM CSR       UNIMPLEMENTED
+80000114 00000193 OP_IMM ADDI      imm=00000000 rs1=0 rd=3
+80000118 00000297 AUIPC            imm=00000000 rd=5
+8000011c eec28293 OP_IMM ADDI      imm=00000eec rs1=5 rd=5
+80000120 30529073 SYSTEM CSR       UNIMPLEMENTED
+80000124 00100513 OP_IMM ADDI      imm=00000001 rs1=0 rd=10
+80000128 01f51513 OP_IMM SLLI      imm=0000001f rs1=10 rd=10
+8000012c 00054c63 BRANCH BLT       imm=00000018 rs1=10 rs2=0 rd=24
+80000130 0ff0000f MISC_MEM
+80000134 00100193 OP_IMM ADDI      imm=00000001 rs1=0 rd=3
+80000138 05d00893 OP_IMM ADDI      imm=0000005d rs1=0 rd=17
+8000013c 00000513 OP_IMM ADDI      imm=00000000 rs1=0 rd=10
+80000140 00000073 SYSTEM ECALL     funct12=0 rs1=0 funct3=0 rd=0
+```

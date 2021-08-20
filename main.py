@@ -374,10 +374,10 @@ def execute(data, size, start_addr):
                     elif system_op == SystemOp.EBREAK:
                         raise Exception("Unimplemented!")
                 except ValueError:
-                    print(f'{"UNKNOWN".rjust(9)}')
+                    print(f'{"UNKNOWN".ljust(9)}')
             else:
                 # One of the CSR instructions, ignore for now
-                print(f'{"CSR".rjust(9)} UNIMPLEMENTED')
+                print(f'{"CSR".ljust(9)} UNIMPLEMENTED')
 
         else:
             print(f'UNKNOWN')
