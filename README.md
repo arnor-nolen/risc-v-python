@@ -1,24 +1,21 @@
 # RISC-V implementation in Python
 
-Very basic implementation of unpriviliged access 32-bit CPU. You might want to look at [main.py](./main.py) for implementation details.
+Very basic implementation of unpriviliged access 32-bit CPU using RISC-V architecture. For the reference, you can check out https://riscv.org/technical/specifications/.
 
 ## How to run tests
 
-Tests are taken from [riscv-tests](https://github.com/riscv/riscv-tests/tree/30e15bf5e7bab7af7153aa9234613b12135304f2). Unfortunately, these tests only work on Linux. To get tests, you need to update submodules:
+Tests are taken from [riscv-tests](https://github.com/riscv/riscv-tests/tree/30e15bf5e7bab7af7153aa9234613b12135304f2). Unfortunately, these tests only work on Linux.
+
+First of all, install RISC-V tools, on Archlinux these are `riscv64-unknown-elf-picolib` (AUR) and `riscv64-unknown-elf-gcc` (AUR).
+
+Next, compile the tests:
 
 ```bash
 git submodule update --init --recursive
-```
-
-After that, compile the tests:
-
-```bash
 cd riscv-tests
-git submodule update --init --recursive
 autoconf
-./configure --prefix=$RISCV/target
+./configure
 make
-make install
 ```
 
 Now you can just run `python main.py` and it should start executing the tests for you.
