@@ -73,29 +73,36 @@ class Emulator:
     # Memory is unimplemented yet
     memory = np.zeros(4 * 1024, dtype=np.uint8)
 
-    def execute_elf(self, file):
+    def load_elf(self, filename):
         """
-        Execute an ELF program
+        Load an ELF program
         """
 
-        # Parse an ELF file
-        elf = ELFFile(file)
-        text_init = elf.get_section_by_name('.text.init')
-        start_addr = np.uint32(text_init.header['sh_addr'])
-        data = text_init.data()
-        size = text_init.header['sh_size']
+        with open(filename, "rb") as file:
+            # Parse an ELF file
+            elf = ELFFile(file)
+            text_init = elf.get_section_by_name('.text.init')
+            self.start_addr = np.uint32(text_init.header['sh_addr'])
+            self.data = text_init.data()
+            self.size = text_init.header['sh_size']
 
-        self.pc = start_addr
-        offset = 0
+            self.pc = self.start_addr
+            self.offset = 0
 
-        while offset + 4 <= size:
-            ins = struct.unpack('I', data[offset : offset + 4])[0]
-            self.execute_instruction(ins)
-            break
+    def next_ins(self):
+        """
+        Execute next instruction
+        """
+
+        if self.offset + 4 <= self.size:
+            binary_ins = self.data[self.offset : self.offset + 4]
+            ins = struct.unpack('I', binary_ins)[0]
+            output = self.execute_instruction(ins)
 
             # Normal flow, go to the next instruction
             self.pc += 4
-            offset = self.pc - start_addr
+            self.offset = self.pc - self.start_addr
+            return output
 
     def execute_instruction(self, ins):
         """
@@ -103,13 +110,13 @@ class Emulator:
         """
         opcode = Opcode(get_bits(ins, 6, 0))
 
-        print(f'{self.pc:08x} {ins:08x} {opcode.name.ljust(6)} ', end='')
+        output = f'{ins:08x} {opcode.name.ljust(6)} '
 
         if opcode == Opcode.LUI:
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{"".ljust(9)} {imm=:08x} {rd=}')
+            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
 
             self.registers[rd] = imm
 
@@ -117,7 +124,7 @@ class Emulator:
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            print(f'{"".ljust(9)} {imm=:08x} {rd=}')
+            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
 
             self.registers[rd] = self.pc + imm
 
@@ -130,7 +137,7 @@ class Emulator:
                 | (get_bits(ins, 19, 12) << 12)
             )
             rd = get_bits(ins, 11, 7)
-            print(f'{"".ljust(9)} {imm=:08x} {rd=}')
+            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
 
             # Sign extending the immediate
             imm = sign_extend(imm, 32, 32)
@@ -143,7 +150,7 @@ class Emulator:
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
-            print(f'{"".ljust(9)} {imm=:08x} {rs1=} {funct3=} {rd=}')
+            output += f'{"".ljust(9)} {imm=:08x} {rs1=} {funct3=} {rd=}\n'
 
             # TODO: Let's hope it works, need to test
             # Sign extending the immediate
@@ -174,7 +181,9 @@ class Emulator:
             branch_to = (self.pc + imm - 4) & get_mask(31, 0)
 
             branch_op = BranchOp(funct3)
-            print(f'{branch_op.name.ljust(9)} {imm=:08x} {rs1=} {rs2=} {rd=}')
+            output += (
+                f'{branch_op.name.ljust(9)} {imm=:08x} {rs1=} {rs2=} {rd=}\n'
+            )
 
             if branch_op == BranchOp.BEQ:
                 if self.registers[rs1] == self.registers[rs2]:
@@ -214,13 +223,13 @@ class Emulator:
             rd = get_bits(ins, 11, 7)
             load_op = LoadOp(funct3)
 
-            print(f'{load_op.name.ljust(9)} {imm=:08x} {rs1=} {rd=}')
+            output += f'{load_op.name.ljust(9)} {imm=:08x} {rs1=} {rd=}\n'
 
         # UNIMPLEMENTED
         elif opcode == Opcode.STORE:
             # SB, SH, SW instructions
             # S type
-            print(f'')
+            output += f'\n'
 
         # Partially UNIMPLEMENTED
         elif opcode == Opcode.OP_IMM:
@@ -232,7 +241,7 @@ class Emulator:
 
             op_imm = OpImm(funct3)
 
-            print(f'{op_imm.name.ljust(9)} {imm=:08x} {rs1=} {rd=}')
+            output += f'{op_imm.name.ljust(9)} {imm=:08x} {rs1=} {rd=}\n'
             if op_imm == OpImm.ADDI:
                 imm = sign_extend(imm, 12, 32)
                 self.registers[rd] = self.registers[rs1] + imm
@@ -321,7 +330,7 @@ class Emulator:
         # UNIMPLEMENTED
         elif opcode == Opcode.MISC_MEM:
             # FENCE instruction
-            print(f'')
+            output += f'\n'
 
         # Partially UNIMPLEMENTED
         elif opcode == Opcode.SYSTEM:
@@ -335,15 +344,12 @@ class Emulator:
             if funct3 == 0b000 and rs1 == 0b00000 and rd == 0b00000:
                 try:
                     system_op = SystemOp(funct12)
-                    print(
-                        f'{system_op.name.ljust(9)} {funct12=} {rs1=} {funct3=} {rd=}'
-                    )
+                    output += f'{system_op.name.ljust(9)} {funct12=} {rs1=} {funct3=} {rd=}\n'
 
                     if system_op == SystemOp.ECALL:
-                        # self.registers 10 - 17 are used for syscalls
+                        # registers 10 - 17 are used for syscalls
                         if self.registers[10] == 1:
                             # Test passed!
-                            print("Test passed!")
                             raise Exception("Test passed!")
                             # break
                         else:
@@ -351,13 +357,15 @@ class Emulator:
                     elif system_op == SystemOp.EBREAK:
                         raise Exception("Unimplemented!")
                 except ValueError:
-                    print(f'{"UNKNOWN".ljust(9)}')
+                    output += f'{"UNKNOWN".ljust(9)}\n'
             else:
                 # One of the CSR instructions, ignore for now
-                print(f'{"CSR".ljust(9)} UNIMPLEMENTED')
+                output += f'{"CSR".ljust(9)} UNIMPLEMENTED\n'
 
         else:
-            print(f'UNKNOWN')
+            output += f'UNKNOWN\n'
+
+        return output
 
 
 class RegistersWidget(GridView):
@@ -366,10 +374,10 @@ class RegistersWidget(GridView):
     """
 
     async def on_mount(self) -> None:
-        sp_registers = Static(
+        self.sp_registers = Static(
             Panel(f"PC={emulator.pc:08x}", title="Registers")
         )
-        gp_registers = Static(
+        self.gp_registers = Static(
             Panel(
                 str(emulator.registers),
                 title="General purpose registers",
@@ -380,33 +388,54 @@ class RegistersWidget(GridView):
         self.grid.add_column("column", repeat=1)
         self.grid.add_row("row", repeat=2, size=10)
         # Place out widgets in to the layout
-        self.grid.add_widget(sp_registers)
-        self.grid.add_widget(gp_registers)
+        self.grid.add_widget(self.sp_registers)
+        self.grid.add_widget(self.gp_registers)
 
 
 class EmulatorApp(App):
+
+    body = Static(
+        Panel(
+            "File loaded, waiting to execute next instruction...\n",
+            title="Instruction",
+        )
+    )
+    registers = RegistersWidget()
+
     async def on_load(self, event: events.Load) -> None:
         """Bind keys with the app loads (but before entering application mode)"""
+        await self.bind("n", "next_ins", "Next")
         await self.bind("q", "quit", "Quit")
 
     async def on_mount(self, event: events.Mount) -> None:
         """Create and dock the widgets."""
 
-        body = Static(
-            Panel(
-                "File loaded, waiting to execute next instruction...\n",
-                title="Instruction",
-            )
-        )
-        registers = RegistersWidget()
-
         await self.view.dock(Header(clock=False), edge="top")
         await self.view.dock(Footer(), edge="bottom")
-        await self.view.dock(registers, edge="right", size=55)
+        await self.view.dock(self.registers, edge="right", size=55)
 
-        await self.view.dock(body, edge="left")
+        await self.view.dock(self.body, edge="left")
 
-        # emulator.execute_elf("./riscv-tests/isa/rv32ui-p-add")
+        filename = "./riscv-tests/isa/rv32ui-p-add"
+
+        async def load_elf(filename):
+            emulator.load_elf(filename)
+
+        await self.call_later(load_elf, filename)
+
+    async def action_next_ins(self):
+        result = emulator.next_ins()
+        # Update UI
+        await self.body.update(Panel(result, title="Instruction"))
+        await self.registers.sp_registers.update(
+            Panel(f"PC={emulator.pc:08x}", title="Registers")
+        )
+        await self.registers.gp_registers.update(
+            Panel(
+                str(emulator.registers),
+                title="General purpose registers",
+            )
+        )
 
 
 if __name__ == '__main__':
