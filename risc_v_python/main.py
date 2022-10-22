@@ -7,11 +7,13 @@ from textual import events
 from textual.reactive import Reactive
 from textual.widgets import Header, Footer, Placeholder, ScrollView, Static
 from textual.widget import Widget
-from textual.views import GridView
+from textual.views import GridView, WindowView
 from textual.reactive import watch
-from rich.console import RenderableType
+from textual.scrollbar import ScrollTo
+from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.layout import Layout
+from rich.align import Align
 from risc_v_python.constants import (
     BranchOp,
     LoadOp,
@@ -38,6 +40,10 @@ def sign_extend(value, cur_size, new_size):
     return value
 
 
+def format_register(reg_name, value):
+    return f'[bold red]{reg_name}[/bold red][bright_black]=[/bright_black]{value:08x} '
+
+
 class Registers:
     """
     Provides access to registers
@@ -53,11 +59,11 @@ class Registers:
         if index != 0:
             self.__registers[index] = value
 
-    def __str__(self):
-        result = ""
+    def dump_regs(self, regs_per_line=4):
+        result = ''
         for i in range(32):
-            result += f'x{i:02}={self.__registers[i]:08x} '
-            if i % 4 == 3:
+            result += format_register(f'x{i:02}', self.__registers[i])
+            if i % regs_per_line == regs_per_line - 1:
                 result += '\n'
         return result
 
@@ -68,10 +74,14 @@ class Emulator:
     """
 
     pc = 0
+    start_addr = 0
+    offset = 0
+    size = 0
     registers = Registers()
     # Allocate 4 KB heap
     # Memory is unimplemented yet
     memory = np.zeros(4 * 1024, dtype=np.uint8)
+    finished = False
 
     def load_elf(self, filename):
         """
@@ -79,15 +89,15 @@ class Emulator:
         """
 
         with open(filename, "rb") as file:
-            # Parse an ELF file
             elf = ELFFile(file)
             text_init = elf.get_section_by_name('.text.init')
             self.start_addr = np.uint32(text_init.header['sh_addr'])
             self.data = text_init.data()
             self.size = text_init.header['sh_size']
 
-            self.pc = self.start_addr
-            self.offset = 0
+        self.pc = self.start_addr
+        self.offset = 0
+        self.finished = False
 
     def next_ins(self):
         """
@@ -97,20 +107,23 @@ class Emulator:
         if self.offset + 4 <= self.size:
             binary_ins = self.data[self.offset : self.offset + 4]
             ins = struct.unpack('I', binary_ins)[0]
-            output = self.execute_instruction(ins)
+            try:
+                output = self.execute_instruction(ins)
+                # Normal flow, go to the next instruction
+                self.pc += 4
+                self.offset = self.pc - self.start_addr
+                return output
+            except Exception as e:
+                self.finished = True
+                return f'[red]{str(e)}[/red]'
 
-            # Normal flow, go to the next instruction
-            self.pc += 4
-            self.offset = self.pc - self.start_addr
-            return output
-
-    def execute_instruction(self, ins):
+    def execute_instruction(self, ins) -> str:
         """
         Execute a single instruction
         """
         opcode = Opcode(get_bits(ins, 6, 0))
 
-        output = f'{ins:08x} {opcode.name.ljust(6)} '
+        output = f'[not bold green]{self.pc:08x}[/not bold green] [not bold cyan]{ins:08x}[/not bold cyan] {opcode.name.ljust(6)} '
 
         if opcode == Opcode.LUI:
             # U type
@@ -351,7 +364,6 @@ class Emulator:
                         if self.registers[10] == 1:
                             # Test passed!
                             raise Exception("Test passed!")
-                            # break
                         else:
                             raise Exception("Test failed!")
                     elif system_op == SystemOp.EBREAK:
@@ -360,7 +372,7 @@ class Emulator:
                     output += f'{"UNKNOWN".ljust(9)}\n'
             else:
                 # One of the CSR instructions, ignore for now
-                output += f'{"CSR".ljust(9)} UNIMPLEMENTED\n'
+                output += f'{"CSR".ljust(9)} [red]UNIMPLEMENTED[/red]\n'
 
         else:
             output += f'UNKNOWN\n'
@@ -368,73 +380,67 @@ class Emulator:
         return output
 
 
-class RegistersWidget(GridView):
-    """
-    Widget to display all registers
-    """
-
-    async def on_mount(self) -> None:
-        self.sp_registers = Static(
-            Panel(f"PC={emulator.pc:08x}", title="Registers")
-        )
-        self.gp_registers = Static(
-            Panel(
-                str(emulator.registers),
-                title="General purpose registers",
-            ),
-        )
-        self.grid.set_gap(0, 0)
-        # Create rows / columns / areas
-        self.grid.add_column("column", repeat=1)
-        self.grid.add_row("row", repeat=2, size=10)
-        # Place out widgets in to the layout
-        self.grid.add_widget(self.sp_registers)
-        self.grid.add_widget(self.gp_registers)
-
-
 class EmulatorApp(App):
 
-    body = Static(
-        Panel(
-            "File loaded, waiting to execute next instruction...\n",
-            title="Instruction",
-        )
-    )
-    registers = RegistersWidget()
+    registers = Static(Panel(''))
+    ins_output = ''
 
     async def on_load(self, event: events.Load) -> None:
-        """Bind keys with the app loads (but before entering application mode)"""
+        """
+        Bind keys with the app loads (but before entering application mode)
+        """
         await self.bind("n", "next_ins", "Next")
+        await self.bind("j", "scroll_down", "Scroll down")
+        await self.bind("k", "scroll_up", "Scroll up")
         await self.bind("q", "quit", "Quit")
 
+        self.body = ScrollView(Panel(''))
+
     async def on_mount(self, event: events.Mount) -> None:
-        """Create and dock the widgets."""
+        """
+        Create and dock the widgets
+        """
 
         await self.view.dock(Header(clock=False), edge="top")
         await self.view.dock(Footer(), edge="bottom")
-        await self.view.dock(self.registers, edge="right", size=55)
-
+        await self.view.dock(self.registers, edge="right", size=29)
         await self.view.dock(self.body, edge="left")
 
         filename = "./riscv-tests/isa/rv32ui-p-add"
 
-        async def load_elf(filename):
+        async def prepare_ui(filename):
             emulator.load_elf(filename)
+            await self.update_ui(
+                "File loaded, waiting to execute next instruction...\n"
+            )
+            self.ins_output = ''
 
-        await self.call_later(load_elf, filename)
+        await self.call_later(prepare_ui, filename)
 
     async def action_next_ins(self):
-        result = emulator.next_ins()
-        # Update UI
-        await self.body.update(Panel(result, title="Instruction"))
-        await self.registers.sp_registers.update(
-            Panel(f"PC={emulator.pc:08x}", title="Registers")
-        )
-        await self.registers.gp_registers.update(
+        if not emulator.finished:
+            result = emulator.next_ins()
+            await self.update_ui(result)
+
+    async def update_ui(self, result):
+        self.ins_output += result
+        await self.body.update(self.ins_output, home=False)
+        await self.registers.update(
             Panel(
-                str(emulator.registers),
-                title="General purpose registers",
+                f"{format_register('PC', emulator.pc)}\n\n{emulator.registers.dump_regs(regs_per_line=2)}",
+                title="Registers",
             )
+        )
+        await self.body.vscroll.action_scroll_down()
+
+    async def action_scroll_up(self):
+        await self.body.vscroll.emit(
+            ScrollTo(self.body.vscroll, y=self.body.vscroll.position - 1)
+        )
+
+    async def action_scroll_down(self):
+        await self.body.vscroll.emit(
+            ScrollTo(self.body.vscroll, y=self.body.vscroll.position + 1)
         )
 
 
