@@ -61,35 +61,37 @@ class Instruction:
         if hasattr(self.args, arg_name):
             arg = getattr(self.args, arg_name)
             if type == FormatType.OP:
-                # formatted = f'{arg.name.ljust(9)}'
-                formatted = f'{arg.name}'
+                formatted = f'{arg.name.ljust(9)}'
             elif type == FormatType.ADDR:
                 formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg:08x}'
             else:
                 formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg}'
         else:
-            if type == FormatType.OP:
-                formatted = ''
-                # formatted = ''.ljust(9)
-            else:
-                formatted = ''
+            formatted = ''
         return formatted
 
     def __str__(self):
+        op_desc = ''.join(
+            [
+                '[red]UNIMP    [/]' if self.unimp else '',
+                self.format_ins_arg('op_imm', FormatType.OP),
+                self.format_ins_arg('load_op', FormatType.OP),
+                self.format_ins_arg('op', FormatType.OP),
+                self.format_ins_arg('system_op', FormatType.OP),
+            ]
+        )
+        if op_desc == '':
+            op_desc = ''.ljust(9)
+
         info = [
             f'[not bold green]{self.addr:08x}[/]',
             f'[not bold cyan]{self.ins:08x}[/]',
-            # self.opcode.name.ljust(6),
-            self.opcode.name,
-            '[red]UNIMPLEMENTED[/]' if self.unimp else '',
-            self.format_ins_arg('op_imm', FormatType.OP),
-            self.format_ins_arg('load_op', FormatType.OP),
-            self.format_ins_arg('op', FormatType.OP),
-            self.format_ins_arg('system_op', FormatType.OP),
+            self.opcode.name.ljust(8),
+            op_desc,
             self.format_ins_arg('funct3'),
             self.format_ins_arg('funct7'),
             self.format_ins_arg('funct12'),
-            self.format_ins_arg('imm', FormatType.ADDR),
+            self.format_ins_arg('imm'),
             self.format_ins_arg('rs1'),
             self.format_ins_arg('rs2'),
             self.format_ins_arg('rd'),
@@ -491,20 +493,13 @@ class Emulator:
                     raise Exception("UNKNOWN")
             else:
                 # One of the CSR instructions, ignore for now
-                raise Exception("CSR")
+                instruction.unimp = True
+                # raise Exception("CSR")
 
         else:
             raise Exception("UNKNOWN")
 
         return instruction
-
-
-class ArgHighlighter:
-    """
-    Highlights arguments of instructions
-    """
-
-    highlights = [r"imm", r"rs", r"rd"]
 
 
 class EmulatorApp(App):
