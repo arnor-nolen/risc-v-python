@@ -1,17 +1,22 @@
 import glob
+from enum import Enum, auto
 import struct
 import numpy as np
 from elftools.elf.elffile import ELFFile
-from textual.app import App
+from textual.app import App, ComposeResult
 from textual import events
 from textual.reactive import Reactive
-from textual.widgets import Header, Footer, Placeholder, ScrollView, Static
+from textual.widgets import Header, Footer, Placeholder, Static
+from textual.containers import Container
 from textual.widget import Widget
-from textual.views import GridView, WindowView
 from textual.reactive import watch
 from textual.scrollbar import ScrollTo
 from rich.console import Console, RenderableType
+from rich.highlighter import RegexHighlighter
+from textual.driver import Driver
 from rich.panel import Panel
+from rich.text import Text
+from rich.theme import Theme
 from rich.layout import Layout
 from rich.align import Align
 from risc_v_python.constants import (
@@ -23,6 +28,74 @@ from risc_v_python.constants import (
     StoreOp,
     SystemOp,
 )
+
+
+class FormatType(Enum):
+    NUMBER = auto()
+    ADDR = auto()
+    OP = auto()
+
+
+class InsArgs:
+    op_imm: OpImm
+    load_op: LoadOp
+    system_op: SystemOp
+    op: Op
+    imm: int
+    rs1: int
+    rs2: int
+    rd: int
+    funct3: int
+    funct7: int
+    funct12: int
+
+
+class Instruction:
+    addr: int
+    ins: int
+    opcode: Opcode
+    args: InsArgs
+    unimp: bool = False
+
+    def format_ins_arg(self, arg_name, type=FormatType.NUMBER):
+        if hasattr(self.args, arg_name):
+            arg = getattr(self.args, arg_name)
+            if type == FormatType.OP:
+                # formatted = f'{arg.name.ljust(9)}'
+                formatted = f'{arg.name}'
+            elif type == FormatType.ADDR:
+                formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg:08x}'
+            else:
+                formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg}'
+        else:
+            if type == FormatType.OP:
+                formatted = ''
+                # formatted = ''.ljust(9)
+            else:
+                formatted = ''
+        return formatted
+
+    def __str__(self):
+        info = [
+            f'[not bold green]{self.addr:08x}[/]',
+            f'[not bold cyan]{self.ins:08x}[/]',
+            # self.opcode.name.ljust(6),
+            self.opcode.name,
+            '[red]UNIMPLEMENTED[/]' if self.unimp else '',
+            self.format_ins_arg('op_imm', FormatType.OP),
+            self.format_ins_arg('load_op', FormatType.OP),
+            self.format_ins_arg('op', FormatType.OP),
+            self.format_ins_arg('system_op', FormatType.OP),
+            self.format_ins_arg('funct3'),
+            self.format_ins_arg('funct7'),
+            self.format_ins_arg('funct12'),
+            self.format_ins_arg('imm', FormatType.ADDR),
+            self.format_ins_arg('rs1'),
+            self.format_ins_arg('rs2'),
+            self.format_ins_arg('rd'),
+        ]
+        filtered = filter(lambda x: x != '', info)
+        return ' '.join(filtered)
 
 
 def get_mask(start, end):
@@ -41,7 +114,17 @@ def sign_extend(value, cur_size, new_size):
 
 
 def format_register(reg_name, value):
-    return f'[bold red]{reg_name}[/bold red][bright_black]=[/bright_black]{value:08x} '
+    return f'[bold red]{reg_name}[/][bright_black]=[/]{value:08x} '
+
+
+def format_arg(arg, type=FormatType.NUMBER):
+    name, value = f'{arg=}'.split('=')
+    if type == FormatType.ADDR:
+        value_formatted = f'{int(value):08x}'
+    else:
+        value_formatted = value
+
+    return f'[yellow]{name}[/]=[blue]{value_formatted}[/]'
 
 
 class Registers:
@@ -63,7 +146,7 @@ class Registers:
         result = ''
         for i in range(32):
             result += format_register(f'x{i:02}', self.__registers[i])
-            if i % regs_per_line == regs_per_line - 1:
+            if (i % regs_per_line == regs_per_line - 1) and i != 31:
                 result += '\n'
         return result
 
@@ -108,28 +191,34 @@ class Emulator:
             binary_ins = self.data[self.offset : self.offset + 4]
             ins = struct.unpack('I', binary_ins)[0]
             try:
-                output = self.execute_instruction(ins)
+                instruction = self.execute_instruction(ins)
                 # Normal flow, go to the next instruction
                 self.pc += 4
                 self.offset = self.pc - self.start_addr
-                return output
+                return str(instruction)
             except Exception as e:
                 self.finished = True
                 return f'[red]{str(e)}[/red]'
 
-    def execute_instruction(self, ins) -> str:
+    def execute_instruction(self, ins) -> Instruction:
         """
         Execute a single instruction
         """
         opcode = Opcode(get_bits(ins, 6, 0))
 
-        output = f'[not bold green]{self.pc:08x}[/not bold green] [not bold cyan]{ins:08x}[/not bold cyan] {opcode.name.ljust(6)} '
+        instruction = Instruction()
+        instruction.addr = self.pc
+        instruction.ins = ins
+        instruction.opcode = opcode
+        instruction.args = InsArgs()
 
         if opcode == Opcode.LUI:
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
+
+            instruction.args.imm = imm
+            instruction.args.rd = rd
 
             self.registers[rd] = imm
 
@@ -137,7 +226,9 @@ class Emulator:
             # U type
             imm = get_bits(ins, 31, 12) << 12
             rd = get_bits(ins, 11, 7)
-            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
+
+            instruction.args.imm = imm
+            instruction.args.rd = rd
 
             self.registers[rd] = self.pc + imm
 
@@ -150,7 +241,9 @@ class Emulator:
                 | (get_bits(ins, 19, 12) << 12)
             )
             rd = get_bits(ins, 11, 7)
-            output += f'{"".ljust(9)} {imm=:08x} {rd=}\n'
+
+            instruction.args.imm = imm
+            instruction.args.rd = rd
 
             # Sign extending the immediate
             imm = sign_extend(imm, 32, 32)
@@ -163,7 +256,11 @@ class Emulator:
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
-            output += f'{"".ljust(9)} {imm=:08x} {rs1=} {funct3=} {rd=}\n'
+
+            instruction.args.imm = imm
+            instruction.args.rs1 = rs1
+            instruction.args.funct3 = funct3
+            instruction.args.rd = rd
 
             # TODO: Let's hope it works, need to test
             # Sign extending the immediate
@@ -194,9 +291,11 @@ class Emulator:
             branch_to = (self.pc + imm - 4) & get_mask(31, 0)
 
             branch_op = BranchOp(funct3)
-            output += (
-                f'{branch_op.name.ljust(9)} {imm=:08x} {rs1=} {rs2=} {rd=}\n'
-            )
+
+            instruction.args.imm = imm
+            instruction.args.rs1 = rs1
+            instruction.args.rs2 = rs2
+            instruction.args.rd = rd
 
             if branch_op == BranchOp.BEQ:
                 if self.registers[rs1] == self.registers[rs2]:
@@ -236,13 +335,16 @@ class Emulator:
             rd = get_bits(ins, 11, 7)
             load_op = LoadOp(funct3)
 
-            output += f'{load_op.name.ljust(9)} {imm=:08x} {rs1=} {rd=}\n'
+            instruction.load_op = load_op
+            instruction.args.imm = imm
+            instruction.args.rs1 = rs1
+            instruction.args.rd = rd
 
         # UNIMPLEMENTED
         elif opcode == Opcode.STORE:
             # SB, SH, SW instructions
             # S type
-            output += f'\n'
+            instruction.unimp = True
 
         # Partially UNIMPLEMENTED
         elif opcode == Opcode.OP_IMM:
@@ -254,7 +356,11 @@ class Emulator:
 
             op_imm = OpImm(funct3)
 
-            output += f'{op_imm.name.ljust(9)} {imm=:08x} {rs1=} {rd=}\n'
+            instruction.args.op_imm = op_imm
+            instruction.args.imm = imm
+            instruction.args.rs1 = rs1
+            instruction.args.rd = rd
+
             if op_imm == OpImm.ADDI:
                 imm = sign_extend(imm, 12, 32)
                 self.registers[rd] = self.registers[rs1] + imm
@@ -279,6 +385,9 @@ class Emulator:
             elif op_imm == OpImm.SRLI_SRAI:
                 shamt = get_bits(imm, 4, 0)
                 funct7 = get_bits(imm, 11, 5)
+
+                instruction.args.funct7 = funct7
+
                 if funct7 == 0b0000000:
                     # SRLI instruction
                     self.registers[rd] = self.registers[rs1] >> shamt
@@ -301,7 +410,11 @@ class Emulator:
 
             op = Op(funct3)
 
-            print(f'{op.name.ljust(9)} {funct7=} {rs1=} {rs2=} {rd=}')
+            instruction.args.op = op
+            instruction.args.funct7 = funct7
+            instruction.args.rs1 = rs1
+            instruction.args.rs2 = rs2
+            instruction.args.rd = rd
 
             if op == Op.ADD_SUB:
                 if funct7 == 0b0000000:
@@ -343,7 +456,7 @@ class Emulator:
         # UNIMPLEMENTED
         elif opcode == Opcode.MISC_MEM:
             # FENCE instruction
-            output += f'\n'
+            instruction.unimp = True
 
         # Partially UNIMPLEMENTED
         elif opcode == Opcode.SYSTEM:
@@ -354,10 +467,16 @@ class Emulator:
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
 
+            instruction.args.funct12 = funct12
+            instruction.args.rs1 = rs1
+            instruction.args.funct3 = funct3
+            instruction.args.rd = rd
+
             if funct3 == 0b000 and rs1 == 0b00000 and rd == 0b00000:
                 try:
                     system_op = SystemOp(funct12)
-                    output += f'{system_op.name.ljust(9)} {funct12=} {rs1=} {funct3=} {rd=}\n'
+
+                    instruction.system_op = system_op
 
                     if system_op == SystemOp.ECALL:
                         # registers 10 - 17 are used for syscalls
@@ -369,42 +488,59 @@ class Emulator:
                     elif system_op == SystemOp.EBREAK:
                         raise Exception("Unimplemented!")
                 except ValueError:
-                    output += f'{"UNKNOWN".ljust(9)}\n'
+                    raise Exception("UNKNOWN")
             else:
                 # One of the CSR instructions, ignore for now
-                output += f'{"CSR".ljust(9)} [red]UNIMPLEMENTED[/red]\n'
+                raise Exception("CSR")
 
         else:
-            output += f'UNKNOWN\n'
+            raise Exception("UNKNOWN")
 
-        return output
+        return instruction
+
+
+class ArgHighlighter:
+    """
+    Highlights arguments of instructions
+    """
+
+    highlights = [r"imm", r"rs", r"rd"]
 
 
 class EmulatorApp(App):
 
-    registers = Static(Panel(''))
+    body = Container(Static(Panel('')), id='body')
+    registers = Static(Panel(''), id='registers')
     ins_output = ''
 
-    async def on_load(self, event: events.Load) -> None:
-        """
-        Bind keys with the app loads (but before entering application mode)
-        """
-        await self.bind("n", "next_ins", "Next")
-        await self.bind("j", "scroll_down", "Scroll down")
-        await self.bind("k", "scroll_up", "Scroll up")
-        await self.bind("q", "quit", "Quit")
+    TITLE = "RISC-V Emulator"
+    CSS_PATH = 'main.tcss'
+    BINDINGS = [
+        ("n", "next_ins", "Next"),
+        ("j", "scroll_down", "Scroll down"),
+        ("k", "scroll_up", "Scroll up"),
+        ("q", "quit", "Quit"),
+    ]
 
-        self.body = ScrollView(Panel(''))
+    async def scroll_to(self, to, animate=False):
+        await self.body.vertical_scrollbar.emit(
+            ScrollTo(
+                self.body.vertical_scrollbar,
+                y=to,
+                animate=animate,
+            )
+        )
 
-    async def on_mount(self, event: events.Mount) -> None:
+    def compose(self) -> ComposeResult:
         """
         Create and dock the widgets
         """
+        yield self.registers
+        yield self.body
+        yield Header()
+        yield Footer()
 
-        await self.view.dock(Header(clock=False), edge="top")
-        await self.view.dock(Footer(), edge="bottom")
-        await self.view.dock(self.registers, edge="right", size=29)
-        await self.view.dock(self.body, edge="left")
+    def on_mount(self) -> None:
 
         filename = "./riscv-tests/isa/rv32ui-p-add"
 
@@ -415,38 +551,38 @@ class EmulatorApp(App):
             )
             self.ins_output = ''
 
-        await self.call_later(prepare_ui, filename)
+        self.call_later(prepare_ui, filename)
 
-    async def action_next_ins(self):
+    async def action_next_ins(self) -> None:
         if not emulator.finished:
             result = emulator.next_ins()
             await self.update_ui(result)
 
-    async def update_ui(self, result):
-        self.ins_output += result
-        await self.body.update(self.ins_output, home=False)
-        await self.registers.update(
+    async def update_ui(self, result) -> None:
+        self.ins_output += f'{result}\n'
+        self.body.children[0].update(self.ins_output)
+
+        self.registers.update(
             Panel(
-                f"{format_register('PC', emulator.pc)}\n\n{emulator.registers.dump_regs(regs_per_line=2)}",
+                Text.from_markup(
+                    f"{format_register('PC', emulator.pc)}\n\n{emulator.registers.dump_regs(regs_per_line=2)}"
+                ),
                 title="Registers",
             )
         )
-        await self.body.vscroll.action_scroll_down()
+        await self.scroll_to(self.body.vertical_scrollbar.window_size)
 
-    async def action_scroll_up(self):
-        await self.body.vscroll.emit(
-            ScrollTo(self.body.vscroll, y=self.body.vscroll.position - 1)
-        )
+    async def action_scroll_up(self) -> None:
+        await self.scroll_to(self.body.vertical_scrollbar.position - 1)
 
-    async def action_scroll_down(self):
-        await self.body.vscroll.emit(
-            ScrollTo(self.body.vscroll, y=self.body.vscroll.position + 1)
-        )
+    async def action_scroll_down(self) -> None:
+        await self.scroll_to(self.body.vertical_scrollbar.position + 1)
 
 
 if __name__ == '__main__':
     emulator = Emulator()
-    EmulatorApp.run(title="RISC-V Emulator")
+    app = EmulatorApp()
+    app.run()
     # paths = [
     #     x
     #     for x in glob.glob('./riscv-tests/isa/rv32ui-p-*')
