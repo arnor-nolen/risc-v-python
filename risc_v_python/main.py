@@ -27,6 +27,7 @@ from risc_v_python.constants import (
     OpImm,
     StoreOp,
     SystemOp,
+    CsrOp,
 )
 
 
@@ -41,6 +42,7 @@ class InsArgs:
     load_op: LoadOp
     system_op: SystemOp
     op: Op
+    csr_op: CsrOp
     imm: int
     rs1: int
     rs2: int
@@ -48,6 +50,7 @@ class InsArgs:
     funct3: int
     funct7: int
     funct12: int
+    csr: int
 
 
 class Instruction:
@@ -73,11 +76,12 @@ class Instruction:
     def __str__(self):
         op_desc = ''.join(
             [
-                '[red]UNIMP    [/]' if self.unimp else '',
                 self.format_ins_arg('op_imm', FormatType.OP),
                 self.format_ins_arg('load_op', FormatType.OP),
                 self.format_ins_arg('op', FormatType.OP),
                 self.format_ins_arg('system_op', FormatType.OP),
+                self.format_ins_arg('csr_op', FormatType.OP),
+                '[red]UNIMP    [/]' if self.unimp else '',
             ]
         )
         if op_desc == '':
@@ -91,6 +95,7 @@ class Instruction:
             self.format_ins_arg('funct3'),
             self.format_ins_arg('funct7'),
             self.format_ins_arg('funct12'),
+            self.format_ins_arg('csr'),
             self.format_ins_arg('imm'),
             self.format_ins_arg('rs1'),
             self.format_ins_arg('rs2'),
@@ -464,20 +469,20 @@ class Emulator:
         elif opcode == Opcode.SYSTEM:
             # ECALL, EBREAK instructions
             # I type
-            funct12 = get_bits(ins, 31, 20)
+            imm = get_bits(ins, 31, 20)
             rs1 = get_bits(ins, 19, 15)
             funct3 = get_bits(ins, 14, 12)
             rd = get_bits(ins, 11, 7)
 
-            instruction.args.funct12 = funct12
             instruction.args.rs1 = rs1
             instruction.args.funct3 = funct3
             instruction.args.rd = rd
 
             if funct3 == 0b000 and rs1 == 0b00000 and rd == 0b00000:
                 try:
-                    system_op = SystemOp(funct12)
+                    system_op = SystemOp(imm)
 
+                    instruction.args.funct12 = imm
                     instruction.system_op = system_op
 
                     if system_op == SystemOp.ECALL:
@@ -493,8 +498,24 @@ class Emulator:
                     raise Exception("UNKNOWN")
             else:
                 # One of the CSR instructions, ignore for now
+                csr_op = CsrOp(funct3)
+
                 instruction.unimp = True
-                # raise Exception("CSR")
+                instruction.args.csr = imm
+                instruction.args.csr_op = csr_op
+
+                if csr_op == CsrOp.CSRRW:
+                    pass
+                elif csr_op == CsrOp.CSRRS:
+                    pass
+                elif csr_op == CsrOp.CSRRC:
+                    pass
+                elif csr_op == CsrOp.CSRRWI:
+                    pass
+                elif csr_op == CsrOp.CSRRSI:
+                    pass
+                elif csr_op == CsrOp.CSRRCI:
+                    pass
 
         else:
             raise Exception("UNKNOWN")

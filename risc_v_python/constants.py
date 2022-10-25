@@ -63,3 +63,12 @@ class Op(Enum):
 class SystemOp(Enum):
     ECALL = 0b000000000000
     EBREAK = 0b000000000001
+
+
+class CsrOp(Enum):
+    CSRRW = 0b001
+    CSRRS = 0b010
+    CSRRC = 0b011
+    CSRRWI = 0b101
+    CSRRSI = 0b110
+    CSRRCI = 0b111
