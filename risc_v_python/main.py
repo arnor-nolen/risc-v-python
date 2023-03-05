@@ -163,7 +163,7 @@ class Emulator:
     Virtual RISC-V machine
     """
 
-    pc = 0
+    pc = np.uint32(0)
     start_addr = 0
     offset = 0
     size = 0
@@ -181,6 +181,8 @@ class Emulator:
         with open(filename, "rb") as file:
             elf = ELFFile(file)
             text_init = elf.get_section_by_name('.text.init')
+            if text_init is None:
+                raise Exception("ELF is empty")
             self.start_addr = np.uint32(text_init.header['sh_addr'])
             self.data = text_init.data()
             self.size = text_init.header['sh_size']
@@ -214,7 +216,7 @@ class Emulator:
         opcode = Opcode(get_bits(ins, 6, 0))
 
         instruction = Instruction()
-        instruction.addr = self.pc
+        instruction.addr = self.pc.item()
         instruction.ins = ins
         instruction.opcode = opcode
         instruction.args = InsArgs()
@@ -342,7 +344,7 @@ class Emulator:
             rd = get_bits(ins, 11, 7)
             load_op = LoadOp(funct3)
 
-            instruction.load_op = load_op
+            instruction.args.load_op = load_op
             instruction.args.imm = imm
             instruction.args.rs1 = rs1
             instruction.args.rd = rd
@@ -483,7 +485,7 @@ class Emulator:
                     system_op = SystemOp(imm)
 
                     instruction.args.funct12 = imm
-                    instruction.system_op = system_op
+                    instruction.args.system_op = system_op
 
                     if system_op == SystemOp.ECALL:
                         # registers 10 - 17 are used for syscalls
