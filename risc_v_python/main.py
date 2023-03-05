@@ -9,7 +9,6 @@ from textual.reactive import Reactive
 from textual.widgets import Header, Footer, Placeholder, Static
 from textual.containers import Container
 from textual.widget import Widget
-from textual.reactive import watch
 from textual.scrollbar import ScrollTo
 from rich.console import Console, RenderableType
 from rich.highlighter import RegexHighlighter
@@ -64,45 +63,45 @@ class Instruction:
         if hasattr(self.args, arg_name):
             arg = getattr(self.args, arg_name)
             if type == FormatType.OP:
-                formatted = f'{arg.name.ljust(9)}'
+                formatted = f"{arg.name.ljust(9)}"
             elif type == FormatType.ADDR:
-                formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg:08x}'
+                formatted = f"[yellow]{arg_name}[/][bright_black]=[/]{arg:08x}"
             else:
-                formatted = f'[yellow]{arg_name}[/][bright_black]=[/]{arg}'
+                formatted = f"[yellow]{arg_name}[/][bright_black]=[/]{arg}"
         else:
-            formatted = ''
+            formatted = ""
         return formatted
 
     def __str__(self):
-        op_desc = ''.join(
+        op_desc = "".join(
             [
-                self.format_ins_arg('op_imm', FormatType.OP),
-                self.format_ins_arg('load_op', FormatType.OP),
-                self.format_ins_arg('op', FormatType.OP),
-                self.format_ins_arg('system_op', FormatType.OP),
-                self.format_ins_arg('csr_op', FormatType.OP),
-                '[red]UNIMP    [/]' if self.unimp else '',
+                self.format_ins_arg("op_imm", FormatType.OP),
+                self.format_ins_arg("load_op", FormatType.OP),
+                self.format_ins_arg("op", FormatType.OP),
+                self.format_ins_arg("system_op", FormatType.OP),
+                self.format_ins_arg("csr_op", FormatType.OP),
+                "[red]UNIMP    [/]" if self.unimp else "",
             ]
         )
-        if op_desc == '':
-            op_desc = ''.ljust(9)
+        if op_desc == "":
+            op_desc = "".ljust(9)
 
         info = [
-            f'[not bold green]{self.addr:08x}[/]',
-            f'[not bold cyan]{self.ins:08x}[/]',
+            f"[not bold green]{self.addr:08x}[/]",
+            f"[not bold cyan]{self.ins:08x}[/]",
             self.opcode.name.ljust(8),
             op_desc,
-            self.format_ins_arg('funct3'),
-            self.format_ins_arg('funct7'),
-            self.format_ins_arg('funct12'),
-            self.format_ins_arg('csr'),
-            self.format_ins_arg('imm'),
-            self.format_ins_arg('rs1'),
-            self.format_ins_arg('rs2'),
-            self.format_ins_arg('rd'),
+            self.format_ins_arg("funct3"),
+            self.format_ins_arg("funct7"),
+            self.format_ins_arg("funct12"),
+            self.format_ins_arg("csr"),
+            self.format_ins_arg("imm"),
+            self.format_ins_arg("rs1"),
+            self.format_ins_arg("rs2"),
+            self.format_ins_arg("rd"),
         ]
-        filtered = filter(lambda x: x != '', info)
-        return ' '.join(filtered)
+        filtered = filter(lambda x: x != "", info)
+        return " ".join(filtered)
 
 
 def get_mask(start, end):
@@ -121,17 +120,17 @@ def sign_extend(value, cur_size, new_size):
 
 
 def format_register(reg_name, value):
-    return f'[bold red]{reg_name}[/][bright_black]=[/]{value:08x} '
+    return f"[bold red]{reg_name}[/][bright_black]=[/]{value:08x} "
 
 
 def format_arg(arg, type=FormatType.NUMBER):
-    name, value = f'{arg=}'.split('=')
+    name, value = f"{arg=}".split("=")
     if type == FormatType.ADDR:
-        value_formatted = f'{int(value):08x}'
+        value_formatted = f"{int(value):08x}"
     else:
         value_formatted = value
 
-    return f'[yellow]{name}[/]=[blue]{value_formatted}[/]'
+    return f"[yellow]{name}[/]=[blue]{value_formatted}[/]"
 
 
 class Registers:
@@ -150,11 +149,11 @@ class Registers:
             self.__registers[index] = value
 
     def dump_regs(self, regs_per_line=4):
-        result = ''
+        result = ""
         for i in range(32):
-            result += format_register(f'x{i:02}', self.__registers[i])
+            result += format_register(f"x{i:02}", self.__registers[i])
             if (i % regs_per_line == regs_per_line - 1) and i != 31:
-                result += '\n'
+                result += "\n"
         return result
 
 
@@ -180,12 +179,12 @@ class Emulator:
 
         with open(filename, "rb") as file:
             elf = ELFFile(file)
-            text_init = elf.get_section_by_name('.text.init')
+            text_init = elf.get_section_by_name(".text.init")
             if text_init is None:
                 raise Exception("ELF is empty")
-            self.start_addr = np.uint32(text_init.header['sh_addr'])
+            self.start_addr = np.uint32(text_init.header["sh_addr"])
             self.data = text_init.data()
-            self.size = text_init.header['sh_size']
+            self.size = text_init.header["sh_size"]
 
         self.pc = self.start_addr
         self.offset = 0
@@ -198,7 +197,7 @@ class Emulator:
 
         if self.offset + 4 <= self.size:
             binary_ins = self.data[self.offset : self.offset + 4]
-            ins = struct.unpack('I', binary_ins)[0]
+            ins = struct.unpack("I", binary_ins)[0]
             try:
                 instruction = self.execute_instruction(ins)
                 # Normal flow, go to the next instruction
@@ -207,7 +206,7 @@ class Emulator:
                 return str(instruction)
             except Exception as e:
                 self.finished = True
-                return f'[red]{str(e)}[/red]'
+                return f"[red]{str(e)}[/red]"
 
     def execute_instruction(self, ins) -> Instruction:
         """
@@ -330,9 +329,7 @@ class Emulator:
                     self.pc = branch_to
             else:
                 # No instruction with such branch_op
-                raise Exception(
-                    f'Wrong {branch_op=:03b} for branch instructions!'
-                )
+                raise Exception(f"Wrong {branch_op=:03b} for branch instructions!")
 
         # UNIMPLEMENTED
         elif opcode == Opcode.LOAD:
@@ -428,21 +425,15 @@ class Emulator:
             if op == Op.ADD_SUB:
                 if funct7 == 0b0000000:
                     # ADD instruction
-                    self.registers[rd] = (
-                        self.registers[rs1] + self.registers[rs2]
-                    )
+                    self.registers[rd] = self.registers[rs1] + self.registers[rs2]
                 elif funct7 == 0b0100000:
                     # SUB instruction
-                    self.registers[rd] = (
-                        self.registers[rs1] - self.registers[rs2]
-                    )
+                    self.registers[rd] = self.registers[rs1] - self.registers[rs2]
             elif op == Op.SLL:
                 shamt = get_bits(self.registers[rs2], 4, 0)
                 self.registers[rd] = self.registers[rs1] << shamt
             elif op == Op.SLT:
-                self.registers[rd] = int(
-                    self.registers[rs1] < self.registers[rs2]
-                )
+                self.registers[rd] = int(self.registers[rs1] < self.registers[rs2])
             elif op == Op.SLTU:
                 raise Exception("Unimplemented!")
             elif op == Op.XOR:
@@ -527,27 +518,18 @@ class Emulator:
 
 class EmulatorApp(App):
 
-    body = Container(Static(Panel('')), id='body')
-    registers = Static(Panel(''), id='registers')
-    ins_output = ''
+    body = Container(Static(Panel("")), id="body")
+    registers = Static(Panel(""), id="registers")
+    ins_output = ""
 
     TITLE = "RISC-V Emulator"
-    CSS_PATH = 'main.tcss'
+    CSS_PATH = "main.tcss"
     BINDINGS = [
         ("n", "next_ins", "Next"),
         ("j", "scroll_down", "Scroll down"),
         ("k", "scroll_up", "Scroll up"),
         ("q", "quit", "Quit"),
     ]
-
-    async def scroll_to(self, to, animate=False):
-        await self.body.vertical_scrollbar.emit(
-            ScrollTo(
-                self.body.vertical_scrollbar,
-                y=to,
-                animate=animate,
-            )
-        )
 
     def compose(self) -> ComposeResult:
         """
@@ -562,22 +544,20 @@ class EmulatorApp(App):
 
         filename = "./riscv-tests/isa/rv32ui-p-add"
 
-        async def prepare_ui(filename):
+        def prepare_ui(filename):
             emulator.load_elf(filename)
-            await self.update_ui(
-                "File loaded, waiting to execute next instruction...\n"
-            )
-            self.ins_output = ''
+            self.update_ui("File loaded, waiting to execute next instruction...\n")
+            self.ins_output = ""
 
         self.call_later(prepare_ui, filename)
 
-    async def action_next_ins(self) -> None:
+    def action_next_ins(self) -> None:
         if not emulator.finished:
             result = emulator.next_ins()
-            await self.update_ui(result)
+            self.update_ui(result)
 
-    async def update_ui(self, result) -> None:
-        self.ins_output += f'{result}\n'
+    def update_ui(self, result) -> None:
+        self.ins_output += f"{result}\n"
         self.body.children[0].update(self.ins_output)
 
         self.registers.update(
@@ -588,16 +568,19 @@ class EmulatorApp(App):
                 title="Registers",
             )
         )
-        await self.scroll_to(self.body.vertical_scrollbar.window_size)
+        self.body.scroll_down()
 
-    async def action_scroll_up(self) -> None:
-        await self.scroll_to(self.body.vertical_scrollbar.position - 1)
+    def action_scroll_up(self) -> None:
+        self.body.scroll_relative(
+            y=-1,
+            animate=False,
+        )
 
-    async def action_scroll_down(self) -> None:
-        await self.scroll_to(self.body.vertical_scrollbar.position + 1)
+    def action_scroll_down(self) -> None:
+        self.body.scroll_relative(y=1, animate=False)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     emulator = Emulator()
     app = EmulatorApp()
     app.run()

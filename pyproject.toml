@@ -11,11 +11,10 @@ packages = [{include = "risc_v_python"}]
 python = "^3.10"
 numpy = "^1.23.4"
 pyelftools = "^0.29"
-textual = "^0.2.1"
+textual = "^0.13.0"
 
 [tool.poetry.group.dev.dependencies]
-black = {version = "^22.10.0", allow-prereleases = true}
-textual = {version = "^0.2.1", extras = ["dev"]}
+textual = {version = "^0.13.0", extras = ["dev"]}
 
 [build-system]
 requires = ["poetry-core"]
