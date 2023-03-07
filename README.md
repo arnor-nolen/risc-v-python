@@ -6,7 +6,7 @@ Very basic implementation of unpriviliged access 32-bit CPU using RISC-V archite
 
 Tests are taken from [riscv-tests](https://github.com/riscv/riscv-tests/tree/30e15bf5e7bab7af7153aa9234613b12135304f2). Unfortunately, these tests only work on Linux.
 
-First of all, install RISC-V tools, on Archlinux these are `riscv64-unknown-elf-picolib` (AUR) and `riscv64-unknown-elf-gcc` (AUR).
+First of all, install RISC-V tools, on Archlinux these are `riscv64-unknown-elf-picolibc` (AUR) and `riscv64-unknown-elf-gcc` (AUR).
 
 Next, compile the tests:
 
