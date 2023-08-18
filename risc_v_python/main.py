@@ -156,6 +156,19 @@ class Registers:
                 result += "\n"
         return result
 
+class CSR:
+    """
+    Provides access to control and status registers (CSR).
+    """
+
+    def __init__(self):
+        self.__csr = np.zeros(4096, dtype=np.uint32)
+
+    def __getitem__(self, index):
+        return self.__csr[index]
+
+    def __setitem__(self, index, value):
+        self.__csr[index] = value
 
 class Emulator:
     """
@@ -167,6 +180,7 @@ class Emulator:
     offset = 0
     size = 0
     registers = Registers()
+    csr = CSR()
     # Allocate 4 KB heap
     # Memory is unimplemented yet
     memory = np.zeros(4 * 1024, dtype=np.uint8)
@@ -493,22 +507,33 @@ class Emulator:
                 # One of the CSR instructions, ignore for now
                 csr_op = CsrOp(funct3)
 
-                instruction.unimp = True
                 instruction.args.csr = imm
                 instruction.args.csr_op = csr_op
 
                 if csr_op == CsrOp.CSRRW:
-                    pass
+                    if instruction.args.rd != 0:
+                        self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    self.csr[instruction.args.csr] = self.registers[instruction.args.rs1]
                 elif csr_op == CsrOp.CSRRS:
-                    pass
+                    self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    if instruction.args.rs1 != 0:
+                        self.csr[instruction.args.csr] |= self.registers[instruction.args.rs1]
                 elif csr_op == CsrOp.CSRRC:
-                    pass
+                    self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    if instruction.args.rs1 != 0:
+                        self.csr[instruction.args.csr] &= ~self.registers[instruction.args.rs1]
                 elif csr_op == CsrOp.CSRRWI:
-                    pass
+                    if instruction.args.rd != 0:
+                        self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    self.csr[instruction.args.csr] = instruction.args.rs1
                 elif csr_op == CsrOp.CSRRSI:
-                    pass
+                    self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    if instruction.args.rs1 != 0:
+                        self.csr[instruction.args.csr] |= instruction.args.rs1
                 elif csr_op == CsrOp.CSRRCI:
-                    pass
+                    self.registers[instruction.args.rd] = self.csr[instruction.args.csr]
+                    if instruction.args.rs1 != 0:
+                        self.csr[instruction.args.csr] &= ~instruction.args.rs1
 
         else:
             raise Exception("UNKNOWN")
