@@ -503,7 +503,9 @@ class Emulator:
                     elif system_op == SystemOp.EBREAK:
                         raise Exception("Debug breakpoint!")
                 except ValueError:
-                    raise Exception("UNKNOWN")
+                    # MRET instruction calls this.
+                    # noop seems to work.
+                    instruction.unimp = True
             else:
                 # One of the CSR instructions, ignore for now
                 csr_op = CsrOp(funct3)
