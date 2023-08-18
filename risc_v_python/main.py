@@ -326,14 +326,10 @@ class Emulator:
                 if self.registers[rs1] != self.registers[rs2]:
                     self.pc = branch_to
             elif branch_op == BranchOp.BLT:
-                if self.registers[rs1] & get_mask(31, 0) < self.registers[
-                    rs2
-                ] & get_mask(31, 0):
+                if np.int32(self.registers[rs1]) < np.int32(self.registers[rs2]):
                     self.pc = branch_to
             elif branch_op == BranchOp.BGE:
-                if self.registers[rs1] & get_mask(31, 0) < self.registers[
-                    rs2
-                ] & get_mask(31, 0):
+                if np.int32(self.registers[rs1]) < np.int32(self.registers[rs2]):
                     self.pc = branch_to
             elif branch_op == BranchOp.BLTU:
                 if self.registers[rs1] < self.registers[rs2]:
@@ -492,15 +488,20 @@ class Emulator:
                     instruction.args.funct12 = imm
                     instruction.args.system_op = system_op
 
+                    syscall = self.registers[17]
+
                     if system_op == SystemOp.ECALL:
                         # registers 10 - 17 are used for syscalls
+                        if syscall == 93:
+                            # exit() syscall
+                            raise Exception(f"Program finished, return value {self.registers[10]}.")
                         if self.registers[10] == 1:
                             # Test passed!
                             raise Exception("Test passed!")
                         else:
                             raise Exception("Test failed!")
                     elif system_op == SystemOp.EBREAK:
-                        raise Exception("Unimplemented!")
+                        raise Exception("Debug breakpoint!")
                 except ValueError:
                     raise Exception("UNKNOWN")
             else:
