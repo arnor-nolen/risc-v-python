@@ -17,9 +17,24 @@ textual = "^0.13.0"
 textual = {version = "^0.13.0", extras = ["dev"]}
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pyright]
 venvPath ="."
-venv = ".venv"
+venv = ".venv/risc-v-python"
+
+[project]
+name = "risc-v-python"
+version = "0.1.0"
+description = "RISC-V implementation in Python"
+authors = [{name="Arnor Nolen", email="andrey1gorbulin@gmail.com"}]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "risc_v_python"}]
+requires-python = ">3.10"
+dependencies = [
+    "numpy ~= 1.23.4",
+    "pyelftools ~= 0.29",
+    "textual ~= 0.13.0"
+]
