@@ -1,23 +1,14 @@
-import glob
+import sys
 from enum import Enum, auto
 import struct
 import numpy as np
 from elftools.elf.elffile import ELFFile
 from textual.app import App, ComposeResult
-from textual import events
-from textual.reactive import Reactive
-from textual.widgets import Header, Footer, Placeholder, Static
+from textual.widgets import Header, Footer, Static
 from textual.containers import Container
-from textual.widget import Widget
-from textual.scrollbar import ScrollTo
-from rich.console import Console, RenderableType
-from rich.highlighter import RegexHighlighter
-from textual.driver import Driver
+from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.theme import Theme
-from rich.layout import Layout
-from rich.align import Align
 from risc_v_python.constants import (
     BranchOp,
     LoadOp,
@@ -570,14 +561,11 @@ class EmulatorApp(App):
 
     def on_mount(self) -> None:
 
-        filename = "./riscv-tests/isa/rv32ui-p-add"
-
-        def prepare_ui(filename):
-            emulator.load_elf(filename)
+        def prepare_ui():
             self.update_ui("File loaded, waiting to execute next instruction...\n")
             self.ins_output = ""
 
-        self.call_later(prepare_ui, filename)
+        self.call_later(prepare_ui)
 
     def action_next_ins(self) -> None:
         if not emulator.finished:
@@ -609,15 +597,25 @@ class EmulatorApp(App):
 
 
 if __name__ == "__main__":
+    if (len(sys.argv) < 2):
+        print("Usage: [program_name] [riscv_program].")
+        sys.exit(1)
+
     emulator = Emulator()
-    app = EmulatorApp()
-    app.run()
-    # paths = [
-    #     x
-    #     for x in glob.glob('./riscv-tests/isa/rv32ui-p-*')
-    #     if not x.endswith('.dump')
-    # ]
-    # for path in paths:
-    #     print(f'Executing file: {path}')
-    #     with open(path, 'rb') as file:
-    #         execute_elf(file)
+    args = [x for x in sys.argv[1:] if x != "-q"]
+    emulator.load_elf(args[0])
+
+    if (len(args) < len(sys.argv[1:])):
+        # Run in quiet mode
+        ins_text = ""
+        console = Console()
+        while not emulator.finished:
+            ins_text = emulator.next_ins()
+            console.print(ins_text)
+        if ins_text == "[red]Program finished, return value 0.[/red]":
+            sys.exit(0)
+        else:
+            sys.exit(1)
+    else:
+        app = EmulatorApp()
+        app.run()
