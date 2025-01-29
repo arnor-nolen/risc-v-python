@@ -597,6 +597,9 @@ class EmulatorApp(App):
 
 
 if __name__ == "__main__":
+    # Ignore numpy overflow warnings.
+    np.seterr(over="ignore")
+
     if (len(sys.argv) < 2):
         print("Usage: [program_name] [riscv_program].")
         sys.exit(1)
