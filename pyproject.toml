@@ -16,9 +16,6 @@ packages = [{ include = "risc_v_python" }]
 [dependency-groups]
 dev = ["textual[dev]>=0.13.0,<0.14"]
 
-[project.scripts]
-test = "pytest ./risc_v_python/test_main.py"
-
 [tool.hatch.build.targets.sdist]
 include = ["risc_v_python"]
 
